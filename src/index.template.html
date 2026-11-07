@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#19152E">
+  <title>Word Board</title>
+  <script>
+    /* Apply the saved theme before first paint. Nightspell is the first-visit default. */
+    (function () {
+      var theme = 'dark';
+      try {
+        var saved = localStorage.getItem('word-board-theme');
+        if (saved === 'light' || saved === 'dark') theme = saved;
+      } catch (err) { /* storage blocked: keep default */ }
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600&family=Fredoka:wght@500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Nunito+Sans:ital,opsz,wght@0,6..12,400..800;1,6..12,400..800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <symbol id="i-open" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M2.5 12h2M19.5 12h2M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.6A8.5 8.5 0 019.4 4 8.5 8.5 0 1020 14.6z"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3.5v11"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4.5 16.5v2a2 2 0 002 2h11a2 2 0 002-2v-2"/></symbol>
+      <symbol id="i-swash" viewBox="0 0 60 10"><path d="M2 7.5C18 3 38 2 58 3.5"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="app">
+    <header class="topbar panel">
+      <div class="brand">
+        <span class="brand__emblem" aria-hidden="true"><img src="assets/sprites/badge-sparkle.png" alt="" width="175" height="171"></span>
+        <h1 class="brand__title">
+          <span class="brand__word">veritas<span class="sp sp--spark brand__spark" aria-hidden="true"></span></span>
+          <span class="brand__sub">— word-board 1.0</span>
+        </h1>
+      </div>
+
+      <fieldset class="theme" role="radiogroup" aria-label="Theme">
+        <legend class="visually-hidden">Theme</legend>
+        <label class="theme__opt"><input type="radio" name="theme" value="light"><svg class="i" aria-hidden="true"><use href="#i-sun"/></svg>Light</label>
+        <label class="theme__opt"><input type="radio" name="theme" value="dark"><svg class="i" aria-hidden="true"><use href="#i-moon"/></svg>Dark</label>
+      </fieldset>
+    </header>
+
+    <main class="workspace" id="workspace">
+      <section class="panel stdin" aria-labelledby="stdin-title">
+        <button class="stdin__rail" id="expand-stdin" type="button" aria-controls="stdin-content" aria-expanded="false" hidden>
+          <span class="rail-icon" aria-hidden="true"><svg class="i"><use href="#i-open"/></svg></span>
+          <span class="stdin__rail-label">open stdin</span>
+        </button>
+
+        <div class="stdin__content" id="stdin-content">
+          <div class="panel__head">
+            <h2 class="panel__title" id="stdin-title"><span class="sp sp--terminal" aria-hidden="true"></span>stdin</h2>
+            <button class="coin" id="collapse-stdin" type="button" aria-controls="stdin-content" aria-expanded="true" aria-label="minimize stdin" title="minimize">
+              <span class="sp sp--minus" aria-hidden="true"></span>
+            </button>
+          </div>
+
+          <label class="stdin__label" id="paste-label" for="paste">Paste your text from Word</label>
+          <div class="paste" id="paste" contenteditable="true" role="textbox" aria-multiline="true" spellcheck="true"
+               aria-labelledby="paste-label" aria-describedby="word-count paste-hint"
+               data-placeholder="Paste the exercise here. Bold words become cards."></div>
+          <div class="stdin__meta"><span id="word-count">0 words found</span></div>
+          <p class="stdin__hint" id="paste-hint" hidden>no bold words found, wrap words in <code>**stars**</code></p>
+
+          <label class="stdin__label stdin__label--sm" for="title">exercise name</label>
+          <input class="field" id="title" type="text" autocomplete="off" spellcheck="false" placeholder="ex 17">
+
+          <fieldset class="modes" id="modes">
+            <legend class="stdin__label stdin__label--sm">cards show</legend>
+          </fieldset>
+
+          <button class="cast" id="cast" type="button" aria-keyshortcuts="Control+Enter Meta+Enter" disabled>
+            <span class="cast__main"><span class="sp sp--wand" aria-hidden="true"></span>cast</span>
+            <span class="cast__keys" aria-hidden="true"><kbd>Ctrl / ⌘</kbd><span>+</span><kbd>Enter</kbd></span>
+          </button>
+          <div class="stdin__row">
+            <button class="btn" id="clean" type="button" disabled><span class="sp sp--trash" aria-hidden="true"></span>clean</button>
+          </div>
+          <p class="helper">cast replaces the whole board</p>
+
+          <figure class="mascot" aria-hidden="true">
+            <p class="mascot__note mascot__note--left">Bold<br>words,<br>bright<br>minds!</p>
+            <span class="mascot__cat">
+              <img src="assets/cat.png" alt="" width="400" height="400" decoding="async">
+              <span class="lid lid--left"></span>
+              <span class="lid lid--right"></span>
+              <span class="wand-glow"></span>
+              <span class="sp sp--spark wand-mote wand-mote--1"></span>
+              <span class="sp sp--spark wand-mote wand-mote--2"></span>
+              <span class="sp sp--spark-mint wand-mote wand-mote--3"></span>
+            </span>
+            <p class="mascot__note mascot__note--right">Turn<br>words<br>into<br>wonder.<svg class="mascot__swash i"><use href="#i-swash"/></svg></p>
+            <span class="sp sp--spark mascot__star mascot__star--a"></span>
+            <span class="sp sp--spark-mint mascot__star mascot__star--b"></span>
+            <span class="sp sp--spark mascot__star mascot__star--c"></span>
+            <span class="sp sp--spark mascot__star mascot__star--d"></span>
+          </figure>
+        </div>
+      </section>
+
+      <div class="stage">
+        <section class="panel board" id="board" aria-labelledby="board-title">
+          <div class="board__head">
+            <h2 class="board__title" id="board-title">The word board</h2>
+            <div class="board__actions">
+              <button class="btn btn--danger" id="stop" type="button" hidden>
+                <span class="stop__icon" aria-hidden="true"></span><span>stop</span>
+              </button>
+              <button class="btn" id="answer-view" type="button" aria-pressed="false" disabled>
+                <span class="sp sp--eye" aria-hidden="true"></span><span>answer view</span>
+              </button>
+              <button class="btn" id="download-png" type="button" disabled>
+                <svg class="i" aria-hidden="true"><use href="#i-download"/></svg><span>download PNG</span>
+              </button>
+            </div>
+          </div>
+          <p class="board__hint" id="png-hint" hidden>PNG download isn't available here. Turn on answer view and take a screenshot.</p>
+          <div class="blocker" id="blocker" role="alert" tabindex="-1" hidden>
+            <p class="blocker__title">Claude isn't available here</p>
+            <p>This board asks Claude for the definitions, synonyms and antonyms. Open it on claude.ai, reload the page and allow it to use Claude when asked. You can still edit and download the board you have.</p>
+          </div>
+          <div class="board__scroll" id="board-scroll"></div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="statusbar">
+      <span class="statusbar__ready"><span class="dot" aria-hidden="true"></span><span id="ready-text">ready when you are</span><span class="statusbar__notice" id="notice" hidden></span><button class="btn btn--sm" id="retry" type="button" hidden>try again</button></span>
+    </footer>
+  </div>
+
+  <div class="visually-hidden" id="announcer" role="status" aria-live="polite"></div>
+
+  <dialog id="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-desc">
+    <div class="dialog__body">
+      <h2 class="dialog__title" id="confirm-title"></h2>
+      <p id="confirm-desc"></p>
+    </div>
+    <div class="dialog__actions">
+      <button class="btn" id="confirm-no" type="button">cancel</button>
+      <button class="btn" id="confirm-yes" type="button"></button>
+    </div>
+  </dialog>
+
+  <script src="parse.js"></script>
+  <script src="modes.js"></script>
+  <script src="board-state.js"></script>
+  <script src="prompt.js"></script>
+  <script src="png-layout.js"></script>
+  <script src="png-render.js"></script>
+  <script src="paste-clean.js"></script>
+  <script src="board-view.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
