@@ -6,6 +6,7 @@
     root.WordPng = root.WordPng || {};
     root.WordPng.wrapText = api.wrapText;
     root.WordPng.layoutBoard = api.layoutBoard;
+    root.WordPng.pickScale = api.pickScale;
   }
 })(typeof self !== 'undefined' ? self : this, function (modes) {
   var C = {
@@ -13,7 +14,9 @@
     wordW: 220, gap: 100, boxPad: 16, blockGap: 8,
     lineH: 22, wordLineH: 26, minWordH: 56, rowGap: 28,
     // word text is drawn in a larger font than the measured card font
-    wordWrapFactor: 0.85
+    wordWrapFactor: 0.85,
+    titleLineH: 48, titleScale: 2.5,
+    maxCanvasSide: 16000, maxPixels: 200000000
   };
 
   function wrapText(text, maxWidth, widthOf) {
@@ -46,7 +49,10 @@
     var cardW = C.width - 2 * C.pad - C.wordW - C.gap;
     var cardInner = cardW - 2 * C.boxPad;
     var wordInner = (C.wordW - 2 * C.boxPad) * C.wordWrapFactor;
-    var y = C.pad + C.titleH + C.titleGap;
+    var titleLines = wrapText(title || '', C.width - 2 * C.pad, function (t) { return widthOf(t) * C.titleScale; });
+    if (!titleLines.length) titleLines = [''];
+    var titleH = C.titleH + (titleLines.length - 1) * C.titleLineH;
+    var y = C.pad + titleH + C.titleGap;
     var rows = [];
     cards.forEach(function (c) {
       var blocks = [];
@@ -72,9 +78,13 @@
       });
       y += Math.max(wordH, cardH) + C.rowGap;
     });
-    var height = rows.length ? y - C.rowGap + C.pad : C.pad + C.titleH + C.pad;
-    return { width: C.width, height: height, title: { text: title, x: C.pad, y: C.pad }, rows: rows };
+    var height = rows.length ? y - C.rowGap + C.pad : C.pad + titleH + C.pad;
+    return { width: C.width, height: height, title: { text: title, lines: titleLines, x: C.pad, y: C.pad, h: titleH, lineH: C.titleLineH }, rows: rows };
   }
 
-  return { wrapText: wrapText, layoutBoard: layoutBoard, CONSTANTS: C };
+  function pickScale(width, height) {
+    return Math.min(2, C.maxCanvasSide / Math.max(width, height), Math.sqrt(C.maxPixels / (width * height)));
+  }
+
+  return { wrapText: wrapText, layoutBoard: layoutBoard, pickScale: pickScale, CONSTANTS: C };
 });

@@ -6,7 +6,6 @@
     root.WordPng.renderPng = api.renderPng;
   }
 })(typeof self !== 'undefined' ? self : this, function (root) {
-  var SCALE = 2;
   var HEAD = 'Fredoka, "Trebuchet MS", sans-serif';
   var BODY = '"Nunito Sans", "Trebuchet MS", sans-serif';
   // Tokens from docs/reference/DESIGN.md (light-* / dark-*).
@@ -59,17 +58,18 @@
     var c = THEMES[theme] || THEMES.light;
     await loadFonts();
     var canvas = document.createElement('canvas');
-    canvas.width = Math.ceil(layout.width * SCALE);
-    canvas.height = Math.ceil(layout.height * SCALE);
+    var scale = root.WordPng.pickScale(layout.width, layout.height);
+    canvas.width = Math.floor(layout.width * scale);
+    canvas.height = Math.floor(layout.height * scale);
     var ctx = canvas.getContext('2d');
-    ctx.scale(SCALE, SCALE);
+    ctx.scale(scale, scale);
     ctx.fillStyle = c.canvas;
     ctx.fillRect(0, 0, layout.width, layout.height);
     ctx.textBaseline = 'top';
 
     ctx.fillStyle = c.text;
     ctx.font = '600 40px ' + HEAD;
-    ctx.fillText(layout.title.text, layout.title.x, layout.title.y);
+    layout.title.lines.forEach(function (ln, i) { ctx.fillText(ln, layout.title.x, layout.title.y + i * layout.title.lineH); });
 
     layout.rows.forEach(function (row) {
       arrow(ctx, row.arrow, c.primaryEdge);
