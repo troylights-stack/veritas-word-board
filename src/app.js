@@ -86,7 +86,12 @@
     retryButton.hidden = !withRetry;
     announce(text);
     window.clearTimeout(noticeTimer);
-    if (!sticky && !withRetry) noticeTimer = window.setTimeout(function () { notice.hidden = true; }, 6000);
+    if (!sticky && !withRetry) noticeTimer = window.setTimeout(clearNotice, 6000);
+  }
+  function clearNotice() {
+    window.clearTimeout(noticeTimer);
+    notice.hidden = true;
+    retryButton.hidden = true;
   }
 
   function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
@@ -381,24 +386,43 @@
       busy = false;
       controller = null;
       blocker.hidden = true;
+      // stdin collapses now, so focus inside it would be lost too.
+      var lost = focusLost() || stdinContent.contains(document.activeElement);
       render();
+      if (lost) (boardScroll.querySelector('[data-field]') || answerButton).focus();
       var failed = cards.filter(function (c) { return c.failed; }).length;
       write(failed ? 'done, ' + plural(failed, 'card') + " couldn't be generated" : 'done', failed ? 'error' : 'note');
     } catch (err) {
       if (!current()) return;
       busy = false;
       controller = null;
+      var lostFocus = focusLost();
       render();
       var code = err && typeof err.code === 'string' ? err.code : 'upstream_error';
-      if (code === 'cancelled' || (err && err.name === 'AbortError')) { notice.hidden = true; return; }
+      if (code === 'cancelled' || (err && err.name === 'AbortError')) {
+        clearNotice();
+        if (lostFocus) castControl().focus();
+        return;
+      }
       if (BLOCKING[code]) {
         blocker.hidden = false;
         write("Claude isn't available here, see the note on the board", 'error', true);
+        if (lostFocus) castControl().focus();
         return;
       }
       write(FAILURE_TEXT[code] || FAILURE_TEXT.upstream_error, 'error', true, true);
+      if (lostFocus) retryButton.focus();
     }
   }
+
+  // True when focus sits on Stop (about to be hidden) or nowhere: only then
+  // does the end of a cast move focus, never away from a place the user chose.
+  function focusLost() {
+    var a = document.activeElement;
+    return !a || a === document.body || a === stopButton;
+  }
+  // The visible control that starts a cast: the button, or the stdin rail when collapsed.
+  function castControl() { return compact ? expandButton : castButton; }
 
   // Drop the in-flight request (if any) so its result is never applied.
   function abortCast() {
@@ -414,7 +438,7 @@
     abortCast();
     render();
     write('stopped, the board is unchanged');
-    (compact ? expandButton : castButton).focus();
+    castControl().focus();
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !dialog.open) {
@@ -484,12 +508,12 @@
       var layout = window.WordPng.layoutBoard(state.cards, state.mode, title, m.widthOf, m.measures);
       var theme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
       var blob = await window.WordPng.renderPng(layout, theme);
-      notice.hidden = true;
+      clearNotice();
       var result = await downloads.save({ filename: window.WordPng.fileName(state.title), data: blob });
       if (result && result.status === 'saved') write('PNG saved');
     } catch (err) {
       var code = err && typeof err.code === 'string' ? err.code : '';
-      if (code === 'declined') { notice.hidden = true; }
+      if (code === 'declined') clearNotice();
       else if (code === 'rate_limited') write('a save prompt is already open, try again in a moment', 'error');
       else if (code === 'too_large') write('this board is too large for one PNG, take a screenshot instead', 'error');
       else if (code === 'bad_request' || code === 'transform_error' || !code) write("couldn't make the PNG, try again", 'error');
