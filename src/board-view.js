@@ -115,6 +115,27 @@
     container.replaceChildren.apply(container, nodes);
   }
 
+  // Placeholder rows while Claude answers: same row grid, pulsing bars, no text.
+  function renderSkeleton(container, n) {
+    var ul = el('ul', 'rows rows--skeleton');
+    ul.setAttribute('aria-hidden', 'true');
+    for (var i = 0; i < Math.max(1, n); i++) {
+      var li = el('li', 'row');
+      var word = el('div', 'word skel');
+      word.appendChild(el('span', 'skel__bar skel__bar--word'));
+      li.appendChild(word);
+      li.appendChild(arrow());
+      var box = el('div', 'card skel');
+      ['skel__bar--long', 'skel__bar--mid', 'skel__bar--short'].forEach(function (k) {
+        box.appendChild(el('span', 'skel__bar ' + k));
+      });
+      li.appendChild(box);
+      ul.appendChild(li);
+    }
+    var label = el('p', 'visually-hidden', 'Claude is writing the cards');
+    container.replaceChildren(label, ul);
+  }
+
   /* Swap `node` for an input. Enter saves, Esc cancels, leaving the field saves.
      onDone(value | null): null means cancelled. Returns { input, cancel }. */
   function openEditor(node, opts) {
@@ -141,5 +162,5 @@
     return { input: input, cancel: function () { finished = true; } };
   }
 
-  return { renderBoard: renderBoard, openEditor: openEditor };
+  return { renderBoard: renderBoard, renderSkeleton: renderSkeleton, openEditor: openEditor };
 });

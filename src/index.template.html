@@ -113,6 +113,9 @@
           <div class="board__head">
             <h2 class="board__title" id="board-title">The word board</h2>
             <div class="board__actions">
+              <button class="btn btn--danger" id="stop" type="button" hidden>
+                <span class="stop__icon" aria-hidden="true"></span><span>stop</span>
+              </button>
               <button class="btn" id="answer-view" type="button" aria-pressed="false" disabled>
                 <span class="sp sp--eye" aria-hidden="true"></span><span>answer view</span>
               </button>
@@ -121,13 +124,18 @@
               </button>
             </div>
           </div>
+          <p class="board__hint" id="png-hint" hidden>PNG download isn't available here. Turn on answer view and take a screenshot.</p>
+          <div class="blocker" id="blocker" role="alert" hidden>
+            <p class="blocker__title">Claude isn't available here</p>
+            <p>This board asks Claude for the definitions, synonyms and antonyms. Open it on claude.ai and allow it to use Claude when asked, then press <code>cast</code> again.</p>
+          </div>
           <div class="board__scroll" id="board-scroll"></div>
         </section>
       </div>
     </main>
 
     <footer class="statusbar">
-      <span class="statusbar__ready"><span class="dot" aria-hidden="true"></span><span id="ready-text">ready when you are</span><span class="statusbar__notice" id="notice" hidden></span></span>
+      <span class="statusbar__ready"><span class="dot" aria-hidden="true"></span><span id="ready-text">ready when you are</span><span class="statusbar__notice" id="notice" hidden></span><button class="btn btn--sm" id="retry" type="button" hidden>try again</button></span>
     </footer>
   </div>
 

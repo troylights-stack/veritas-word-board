@@ -28,6 +28,11 @@
   var readyText = $('#ready-text');
   var announcer = $('#announcer');
   var dialog = $('#confirm');
+  var retryButton = $('#retry');
+  var stopButton = $('#stop');
+  var blocker = $('#blocker');
+  var downloadButton = $('#download-png');
+  var pngHint = $('#png-hint');
 
   var state = BS.createState();
   var review = false;
@@ -36,31 +41,52 @@
   var controller = null;
   var activeEditor = null;   // { cancel() } of the open inline editor, if any
   var noticeTimer = 0;
+  var pending = 0;           // how many skeleton rows to show while a cast runs
+  var exporting = false;     // a PNG export is being drawn or offered
+  var downloadsGone = false; // downloads capability is unavailable in this view
 
-  /* ── Claude seam. Task 7 replaces the default with the real sample call.
-     Contract: askClaude(terms, signal) -> Promise<Card[]>. A dev stub may
-     define window.__askClaude to stand in for it. ─────────────────────── */
-  function defaultAskClaude(terms) {
-    return Promise.resolve(window.WordPrompt.normalizeResponse([], terms));
+  /* ── Claude: one sample.json call per cast ──────────────────────
+     askClaude(terms, signal) -> Promise<Card[]>; rejects with {code}. */
+  // claude.use(name) or null: outside claude.ai there is no `claude` global.
+  async function capability(name) {
+    if (typeof claude === 'undefined' || !claude || typeof claude.use !== 'function') return null;
+    try { return (await claude.use(name)) || null; } catch (err) { return null; }
   }
-  function askClaude(terms, signal) {
-    var impl = typeof window.__askClaude === 'function' ? window.__askClaude : defaultAskClaude;
-    return impl(terms, signal);
+  async function askClaude(terms, signal) {
+    var sample = await capability('sample');
+    if (!sample || typeof sample.json !== 'function') throw { code: 'no_sample' };
+    if (signal.aborted) throw { code: 'cancelled' };
+    var raw = await sample.json(window.WordPrompt.buildPrompt(terms), { signal: signal });
+    return window.WordPrompt.normalizeResponse(raw, terms);
   }
+
+  // Codes after which this view can never use Claude: explain, never re-ask by itself.
+  var BLOCKING = { no_sample: 1, not_granted: 1, sampling_disabled: 1, not_declared: 1, capability_disabled: 1, capability_removed: 1 };
+  var FAILURE_TEXT = {
+    rate_limited: 'Claude is busy or your usage limit is reached, wait a little and try again',
+    session_expired: 'your claude.ai session expired, sign in again and try again',
+    invalid_json: "Claude's answer came back in the wrong shape, try again",
+    prompt_too_large: 'too much text for one go, try fewer words',
+    refused: 'Claude declined this text, change it and try again',
+    empty_completion: 'Claude sent an empty answer, try again with fewer words',
+    upstream_error: "couldn't reach Claude, try again"
+  };
 
   /* ── status strip ───────────────────────────────────────────── */
   function announce(text) {
     announcer.textContent = '';
     window.setTimeout(function () { announcer.textContent = text; }, 30);
   }
-  // sticky notices (e.g. "asking Claude…") stay until replaced; others clear after 6 s.
-  function write(text, kind, sticky) {
+  // sticky notices (e.g. "Thinking…") stay until replaced; others clear after 6 s.
+  // withRetry shows the manual "try again" button beside the notice (it stays put).
+  function write(text, kind, sticky, withRetry) {
     notice.textContent = '· ' + text;
     notice.dataset.kind = kind || 'note';
     notice.hidden = false;
+    retryButton.hidden = !withRetry;
     announce(text);
     window.clearTimeout(noticeTimer);
-    if (!sticky) noticeTimer = window.setTimeout(function () { notice.hidden = true; }, 6000);
+    if (!sticky && !withRetry) noticeTimer = window.setTimeout(function () { notice.hidden = true; }, 6000);
   }
 
   function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
@@ -179,12 +205,24 @@
     expandButton.hidden = !compact;
     collapseButton.setAttribute('aria-expanded', String(!compact));
     expandButton.setAttribute('aria-expanded', String(!compact));
-    // Answer view and an in-flight cast both lock editing (no editable targets).
-    View.renderBoard(boardScroll, state, review || busy);
+    // An in-flight cast shows skeleton rows; answer view locks editing.
+    if (busy) View.renderSkeleton(boardScroll, pending);
+    else View.renderBoard(boardScroll, state, review);
     boardPanel.setAttribute('aria-busy', String(busy));
+    stopButton.hidden = !busy;
+    renderDownload();
     refreshInput();
     if (focus) refocus(focus);
     fitReview();
+  }
+
+  function renderDownload() {
+    downloadButton.hidden = downloadsGone;
+    // While exporting the button keeps focus (aria-disabled); downloadPng ignores repeat clicks.
+    downloadButton.disabled = busy || !state.cards.length;
+    downloadButton.setAttribute('aria-disabled', String(exporting));
+    downloadButton.setAttribute('aria-busy', String(exporting));
+    pngHint.hidden = !downloadsGone;
   }
 
   function refocus(f) {
@@ -306,6 +344,7 @@
   /* ── cast ───────────────────────────────────────────────────── */
   async function cast() {
     if (busy) return;
+    var starter = document.activeElement;   // cast button, retry or a shortcut elsewhere
     var terms = currentTerms();
     if (!terms.length) {
       write(paste.textContent.trim() ? 'no bold words found, wrap words in **stars**' : 'paste your text first', 'error');
@@ -327,9 +366,12 @@
     var my = new AbortController();
     controller = my;
     busy = true;
+    pending = Math.min(terms.length, 8);
     if (activeEditor) { activeEditor.cancel(); activeEditor = null; }   // editing locks while Claude works
+    var hadFocus = starter === castButton || starter === retryButton;
     render();
-    write('asking Claude…', 'note', true);
+    if (hadFocus) stopButton.focus();   // the control that started it is now disabled or gone
+    write('Thinking…', 'note', true);
     function current() { return controller === my && !my.signal.aborted; }
     try {
       var cards = await askClaude(terms, my.signal);
@@ -338,6 +380,7 @@
       compact = true;
       busy = false;
       controller = null;
+      blocker.hidden = true;
       render();
       var failed = cards.filter(function (c) { return c.failed; }).length;
       write(failed ? 'done, ' + plural(failed, 'card') + " couldn't be generated" : 'done', failed ? 'error' : 'note');
@@ -346,9 +389,14 @@
       busy = false;
       controller = null;
       render();
-      if (!(err && (err.name === 'AbortError' || err.code === 'cancelled'))) {
-        write("couldn't reach Claude, try again", 'error');
+      var code = err && typeof err.code === 'string' ? err.code : 'upstream_error';
+      if (code === 'cancelled' || (err && err.name === 'AbortError')) { notice.hidden = true; return; }
+      if (BLOCKING[code]) {
+        blocker.hidden = false;
+        write("Claude isn't available here, see the note on the board", 'error', true);
+        return;
       }
+      write(FAILURE_TEXT[code] || FAILURE_TEXT.upstream_error, 'error', true, true);
     }
   }
 
@@ -360,6 +408,14 @@
   }
 
   castButton.addEventListener('click', function () { cast(); });
+  retryButton.addEventListener('click', function () { cast(); });
+  stopButton.addEventListener('click', function () {
+    if (!busy) return;
+    abortCast();
+    render();
+    write('stopped, the board is unchanged');
+    (compact ? expandButton : castButton).focus();
+  });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !dialog.open) {
       if (e.target.closest && e.target.closest('.edit-input')) return;
@@ -392,6 +448,58 @@
   collapseButton.addEventListener('click', function () { compact = true; render(); expandButton.focus(); });
   expandButton.addEventListener('click', function () { compact = false; render(); paste.focus(); });
 
+  /* ── download PNG ───────────────────────────────────────────── */
+  var measureCtx = null;
+  // Measures for WordPng.layoutBoard: canvas measureText in exactly the fonts
+  // renderPng draws (body 16px for widthOf, plus bold list, word and title),
+  // taken only after the web fonts are in, so the layout matches the drawing.
+  async function measurer() {
+    var F = window.WordPng.FONTS;
+    await window.WordPng.loadFonts();
+    if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+    function by(font) {
+      return function (text) { measureCtx.font = font; return measureCtx.measureText(text).width; };
+    }
+    return { widthOf: by(F.body), measures: { list: by(F.list), word: by(F.word), title: by(F.title) } };
+  }
+
+  function noDownloads() {
+    var hadFocus = document.activeElement === downloadButton;
+    downloadsGone = true;
+    renderDownload();
+    if (hadFocus) answerButton.focus();
+    write("PNG download isn't available here, use answer view and take a screenshot", 'note', true);
+  }
+
+  async function downloadPng() {
+    if (busy || exporting || !state.cards.length) return;
+    exporting = true;
+    renderDownload();
+    try {
+      var downloads = await capability('downloads');
+      if (!downloads || typeof downloads.save !== 'function') { exporting = false; noDownloads(); return; }
+      write('drawing the PNG…', 'note', true);
+      var m = await measurer();
+      var title = state.title || 'The word board';
+      var layout = window.WordPng.layoutBoard(state.cards, state.mode, title, m.widthOf, m.measures);
+      var theme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+      var blob = await window.WordPng.renderPng(layout, theme);
+      notice.hidden = true;
+      var result = await downloads.save({ filename: window.WordPng.fileName(state.title), data: blob });
+      if (result && result.status === 'saved') write('PNG saved');
+    } catch (err) {
+      var code = err && typeof err.code === 'string' ? err.code : '';
+      if (code === 'declined') { notice.hidden = true; }
+      else if (code === 'rate_limited') write('a save prompt is already open, try again in a moment', 'error');
+      else if (code === 'too_large') write('this board is too large for one PNG, take a screenshot instead', 'error');
+      else if (code === 'bad_request' || code === 'transform_error' || !code) write("couldn't make the PNG, try again", 'error');
+      else { exporting = false; noDownloads(); return; }   // unavailable and unknown codes: hide the save UI
+    }
+    exporting = false;
+    renderDownload();
+  }
+  downloadButton.addEventListener('click', function () { downloadPng(); });
+
   /* ── theme ──────────────────────────────────────────────────── */
   function themeColor(theme) {
     var meta = document.querySelector('meta[name="theme-color"]');
@@ -420,4 +528,8 @@
 
   readyText.textContent = 'ready when you are';
   render();
+  // Hide the PNG button up front when this view cannot save files.
+  capability('downloads').then(function (d) {
+    if (!d && !downloadsGone) { downloadsGone = true; renderDownload(); }
+  });
 })();

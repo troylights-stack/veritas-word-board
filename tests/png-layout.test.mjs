@@ -77,3 +77,46 @@ test('pickScale', () => {
     assert.ok(960 * s <= 16384 && h * s <= 16384 && 960 * s * h * s <= 200e6 + 1);
   }
 });
+
+const { fileName } = createRequire(import.meta.url)('../src/png-layout.js');
+test('fileName: exercise name + .png, word-board.png fallback', () => {
+  assert.equal(fileName('ex 17'), 'ex 17.png');
+  assert.equal(fileName(''), 'word-board.png');
+  assert.equal(fileName(undefined), 'word-board.png');
+  assert.equal(fileName('  \t '), 'word-board.png');
+  assert.equal(fileName('../..'), 'word-board.png');
+});
+test('fileName strips path, reserved and control characters and collapses spaces', () => {
+  assert.equal(fileName('../etc/passwd'), 'etc passwd.png');
+  assert.equal(fileName('a\\b:c*d?"e<f>g|h'), 'a b c d e f g h.png');
+  assert.equal(fileName('ex\u000017\u001f\u007f  \n  week 3'), 'ex 17 week 3.png');
+  assert.equal(fileName('.hidden.'), 'hidden.png');
+  assert.equal(fileName('ex​17‮'), 'ex17.png');
+});
+test('fileName caps the base at 80 characters', () => {
+  const n = fileName('word '.repeat(40));
+  assert.ok(n.endsWith('.png') && !/\s\.png$/.test(n));
+  assert.ok(n.length - 4 <= 80, n);
+});
+
+// Per-font measures: bold list text and the bigger word font are wider than the body font.
+const measures = { list: (s) => s.length * 9, word: (s) => s.length * 12, title: (s) => s.length * 22 };
+const C = createRequire(import.meta.url)('../src/png-layout.js').CONSTANTS;
+test('with per-font measures every drawn line fits its box', () => {
+  const big = card(1, {
+    term: 'Antidisestablishmentarianism and more',
+    synonyms: ['Pneumonoultramicroscopicsilicovolcanoconiosis' + 'x'.repeat(30), 'choose', 'select', 'pick out', 'single out', 'designate', 'nominate', 'appoint', 'earmark'],
+    antonyms: ['ignore', 'reject', 'overlook', 'randomize', 'disregard', 'dismiss', 'pass over', 'neglect']
+  });
+  const l = layoutBoard([big], 'all', 'A long title for the exercise board ' + 'T'.repeat(60), w, measures);
+  const row = l.rows[0];
+  const cardInner = row.card.w - 2 * C.boxPad;
+  row.card.blocks.filter((b) => b.kind !== 'definition').forEach((b) => b.lines.forEach((ln) => assert.ok(measures.list(ln) <= cardInner, ln)));
+  row.word.lines.forEach((ln) => assert.ok(measures.word(ln) <= row.word.w - 2 * C.boxPad, ln));
+  l.title.lines.forEach((ln) => assert.ok(measures.title(ln) <= C.width - 2 * C.pad, ln));
+});
+test('empty synonym or antonym list reads "none", like the screen', () => {
+  const b = layoutBoard([card(1, { synonyms: [], antonyms: [] })], 'all', 't', w).rows[0].card.blocks;
+  assert.equal(b[1].lines[0], 'Synonyms: none');
+  assert.equal(b[2].lines[0], 'Antonyms: none');
+});

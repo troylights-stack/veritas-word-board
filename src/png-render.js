@@ -4,10 +4,14 @@
   else {
     root.WordPng = root.WordPng || {};
     root.WordPng.renderPng = api.renderPng;
+    root.WordPng.FONTS = api.FONTS;
+    root.WordPng.loadFonts = api.loadFonts;
   }
 })(typeof self !== 'undefined' ? self : this, function (root) {
   var HEAD = 'Fredoka, "Trebuchet MS", sans-serif';
   var BODY = '"Nunito Sans", "Trebuchet MS", sans-serif';
+  // The exact fonts drawn; app.js measures with the same strings for layoutBoard.
+  var FONTS = { body: '400 16px ' + BODY, list: '700 16px ' + BODY, word: '800 20px ' + BODY, title: '600 40px ' + HEAD };
   // Tokens from docs/reference/DESIGN.md (light-* / dark-*).
   var THEMES = {
     light: { canvas: '#F7F0E5', panel: '#FFF9F0', raised: '#FFFCF7', text: '#243F40', border: '#C99F77', primary: '#58C8C3', primaryEdge: '#247F7C', trueC: '#26786B', falseC: '#A54335' },
@@ -47,9 +51,8 @@
   }
 
   async function loadFonts() {
-    var specs = ['600 40px Fredoka', '800 20px "Nunito Sans"', '400 16px "Nunito Sans"', '700 16px "Nunito Sans"'];
     try {
-      await Promise.all(specs.map(function (s) { return document.fonts.load(s); }));
+      await Promise.all(Object.keys(FONTS).map(function (k) { return document.fonts.load(FONTS[k]); }));
       await document.fonts.ready;
     } catch (e) { /* fall back to system fonts */ }
   }
@@ -68,14 +71,14 @@
     ctx.textBaseline = 'top';
 
     ctx.fillStyle = c.text;
-    ctx.font = '600 40px ' + HEAD;
+    ctx.font = FONTS.title;
     layout.title.lines.forEach(function (ln, i) { ctx.fillText(ln, layout.title.x, layout.title.y + i * layout.title.lineH); });
 
     layout.rows.forEach(function (row) {
       arrow(ctx, row.arrow, c.primaryEdge);
       var w = row.word;
       box(ctx, w, c.panel, c.border);
-      ctx.fillStyle = c.text; ctx.font = '800 20px ' + BODY;
+      ctx.fillStyle = c.text; ctx.font = FONTS.word;
       var wy = w.y + (w.h - w.lines.length * 26) / 2;
       w.lines.forEach(function (ln, i) { ctx.fillText(ln, w.x + 16, wy + i * 26 + 2); });
 
@@ -84,7 +87,7 @@
       var y = cd.y + 16;
       cd.blocks.forEach(function (b) {
         ctx.fillStyle = b.kind === 'synonyms' ? c.trueC : b.kind === 'antonyms' ? c.falseC : c.text;
-        ctx.font = (b.kind === 'definition' ? '400' : '700') + ' 16px ' + BODY;
+        ctx.font = b.kind === 'definition' ? FONTS.body : FONTS.list;
         b.lines.forEach(function (ln) { ctx.fillText(ln, cd.x + 16, y + 2); y += 22; });
         y += 8;
       });
@@ -95,5 +98,5 @@
     });
   }
 
-  return { renderPng: renderPng };
+  return { renderPng: renderPng, loadFonts: loadFonts, FONTS: FONTS };
 });

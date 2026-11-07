@@ -16,12 +16,15 @@
     'Each object must look like: {"term": "<the term exactly as given>", "definition": "...", "synonyms": ["..."], "antonyms": ["..."]}'
   ].join('\n');
 
+  // One line per value: pasted newlines must not be able to forge list lines.
+  function oneLine(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); }
+
   function buildPrompt(terms) {
     var lines = [INSTRUCTIONS, '', 'Terms:'];
     for (var i = 0; i < terms.length; i++) {
       var t = terms[i];
-      lines.push((i + 1) + '. Term: ' + t.text);
-      lines.push('   Sentence: ' + (t.context || '(none)'));
+      lines.push((i + 1) + '. Term: ' + oneLine(t.text));
+      lines.push('   Sentence: ' + (oneLine(t.context) || '(none)'));
     }
     return lines.join('\n');
   }

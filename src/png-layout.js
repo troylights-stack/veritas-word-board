@@ -7,6 +7,7 @@
     root.WordPng.wrapText = api.wrapText;
     root.WordPng.layoutBoard = api.layoutBoard;
     root.WordPng.pickScale = api.pickScale;
+    root.WordPng.fileName = api.fileName;
   }
 })(typeof self !== 'undefined' ? self : this, function (modes) {
   var C = {
@@ -42,14 +43,22 @@
   }
 
   function listLines(label, items, maxWidth, widthOf) {
-    return wrapText(label + ': ' + (items || []).join(', '), maxWidth, widthOf);
+    items = items || [];
+    return wrapText(label + ': ' + (items.length ? items.join(', ') : 'none'), maxWidth, widthOf);
   }
 
-  function layoutBoard(cards, mode, title, widthOf) {
+  /* widthOf(text) measures the 16px body font. `measures` (optional) gives exact
+     measures for the other drawn fonts: { list: bold 16px, word: 800 20px,
+     title: heading 40px }. Without it those are estimated from widthOf. */
+  function layoutBoard(cards, mode, title, widthOf, measures) {
+    var m = measures || {};
+    var listW = m.list || widthOf;
     var cardW = C.width - 2 * C.pad - C.wordW - C.gap;
     var cardInner = cardW - 2 * C.boxPad;
-    var wordInner = (C.wordW - 2 * C.boxPad) * C.wordWrapFactor;
-    var titleLines = wrapText(title || '', C.width - 2 * C.pad, function (t) { return widthOf(t) * C.titleScale; });
+    var wordInner = C.wordW - 2 * C.boxPad;
+    var wordW = m.word || function (t) { return widthOf(t) / C.wordWrapFactor; };
+    var titleW = m.title || function (t) { return widthOf(t) * C.titleScale; };
+    var titleLines = wrapText(title || '', C.width - 2 * C.pad, titleW);
     if (!titleLines.length) titleLines = [''];
     var titleH = C.titleH + (titleLines.length - 1) * C.titleLineH;
     var y = C.pad + titleH + C.titleGap;
@@ -60,13 +69,13 @@
         blocks.push({ kind: 'definition', lines: ["couldn't generate, retry"] });
       } else {
         blocks.push({ kind: 'definition', lines: wrapText(c.definition || '', cardInner, widthOf) });
-        if (modes.showsSynonyms(mode)) blocks.push({ kind: 'synonyms', lines: listLines('Synonyms', c.synonyms, cardInner, widthOf) });
-        if (modes.showsAntonyms(mode)) blocks.push({ kind: 'antonyms', lines: listLines('Antonyms', c.antonyms, cardInner, widthOf) });
+        if (modes.showsSynonyms(mode)) blocks.push({ kind: 'synonyms', lines: listLines('Synonyms', c.synonyms, cardInner, listW) });
+        if (modes.showsAntonyms(mode)) blocks.push({ kind: 'antonyms', lines: listLines('Antonyms', c.antonyms, cardInner, listW) });
       }
       var n = 0;
       blocks.forEach(function (b) { n += b.lines.length; });
       var cardH = 2 * C.boxPad + n * C.lineH + (blocks.length - 1) * C.blockGap;
-      var wordLines = wrapText(c.term || '', wordInner, widthOf);
+      var wordLines = wrapText(c.term || '', wordInner, wordW);
       var wordH = Math.max(C.minWordH, 2 * C.boxPad + wordLines.length * C.wordLineH);
       var cardX = C.pad + C.wordW + C.gap;
       var word = { x: C.pad, y: y, w: C.wordW, h: wordH, lines: wordLines };
@@ -86,5 +95,18 @@
     return Math.min(2, C.maxCanvasSide / Math.max(width, height), Math.sqrt(C.maxPixels / (width * height)));
   }
 
-  return { wrapText: wrapText, layoutBoard: layoutBoard, pickScale: pickScale, CONSTANTS: C };
+  // '<exercise name>.png' with path, reserved, control and invisible characters
+  // removed, spaces collapsed, at most 80 characters; 'word-board.png' if nothing is left.
+  function fileName(title) {
+    var base = String(title == null ? '' : title)
+      .replace(/[­​-‏‪-‮⁠-⁩﻿]/g, '')
+      .replace(/[\u0000-\u001f\u007f-\u009f\/\\:*?"<>|]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/^[\s.]+|[\s.]+$/g, '')
+      .slice(0, 80)
+      .replace(/[\s.]+$/, '');
+    return (base || 'word-board') + '.png';
+  }
+
+  return { wrapText: wrapText, layoutBoard: layoutBoard, pickScale: pickScale, fileName: fileName, CONSTANTS: C };
 });
