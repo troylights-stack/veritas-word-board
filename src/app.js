@@ -39,11 +39,13 @@
   var compact = false;
   var busy = false;
   var controller = null;
-  var activeEditor = null;   // { cancel() } of the open inline editor, if any
+  var activeEditor = null;   // { cancel(), commit() } of the open inline editor, if any
+  var removedAt = null;      // list item the last saved edit removed, if any
   var noticeTimer = 0;
   var pending = 0;           // how many skeleton rows to show while a cast runs
   var exporting = false;     // a PNG export is being drawn or offered
   var downloadsGone = false; // downloads capability is unavailable in this view
+  var claudeBlocked = false; // Claude refused for this page load: cast stays off until a reload
 
   /* ── Claude: one sample.json call per cast ──────────────────────
      askClaude(terms, signal) -> Promise<Card[]>; rejects with {code}. */
@@ -105,7 +107,7 @@
     var hasText = !!paste.textContent.trim();
     wordCount.textContent = plural(n, 'word') + ' found';
     pasteHint.hidden = !(hasText && n === 0);
-    castButton.disabled = busy || n === 0;
+    castButton.disabled = busy || n === 0 || claudeBlocked;
     cleanButton.disabled = !hasText && !state.cards.length && !titleInput.value;
   }
 
@@ -236,6 +238,17 @@
       : boardScroll.querySelector(sel + (f.index != null ? '[data-index="' + f.index + '"]' : ':not([data-add])'));
     if (!node && f.index != null) node = boardScroll.querySelector(sel + '[data-add]');
     if (node) node.focus({ preventScroll: true });
+    return node;
+  }
+
+  // Where an editable board target sits, so it can be found again after a re-render.
+  function placeOf(node) {
+    return { key: node.dataset.key, field: node.dataset.field,
+      index: node.dataset.index != null ? Number(node.dataset.index) : null, add: node.dataset.add === '1' };
+  }
+  function findPlace(f) {
+    var sel = '[data-key="' + CSS.escape(f.key) + '"][data-field="' + f.field + '"]';
+    return boardScroll.querySelector(sel + (f.add ? '[data-add]' : f.index != null ? '[data-index="' + f.index + '"]' : ':not([data-add])'));
   }
 
   /* Answer view: largest --rv at which every row fits without scrolling.
@@ -282,32 +295,66 @@
     var index = isList && !adding ? Number(node.dataset.index) : null;
     var noun = field === 'term' ? 'word' : field === 'definition' ? 'definition' : field.slice(0, -1);
     var old = field === 'term' || field === 'definition' ? card[field] : adding ? '' : card[field][index];
-    if (activeEditor) { activeEditor.cancel(); activeEditor = null; }
+    // Clicking another item while editing: save the open edit first, then edit
+    // the same item in the rebuilt board (one place earlier if the save removed
+    // an item before it in the same list).
+    if (activeEditor) {
+      var place = placeOf(node);
+      removedAt = null;
+      activeEditor.commit();
+      activeEditor = null;
+      if (removedAt && removedAt.key === place.key && removedAt.field === place.field &&
+          place.index != null && removedAt.index < place.index) place.index -= 1;
+      node = findPlace(place);
+      card = cardOf(key);
+      if (!node || !card) return;
+      old = field === 'term' || field === 'definition' ? card[field] : adding ? '' : card[field][index = place.index];
+    }
     activeEditor = View.openEditor(node, {
       value: old,
       multiline: field === 'definition',
       label: (adding ? 'new ' : 'edit ') + noun + ' for ' + card.term + '. Enter saves, Escape cancels',
       placeholder: isList ? (adding ? 'new ' + noun : 'empty removes it') : '',
-      onDone: function (value) {
+      onDone: function (value, info) {
         activeEditor = null;
         if (busy) return;   // never save into a board that a cast is about to replace
-        var focus = { key: key, field: field, index: index, add: adding };
-        if (value === null) { render(focus); return; }
+        // Enter/Esc return focus to the edited item; leaving the field (click,
+        // Tab) keeps focus where it went, found again after the re-render.
+        var how = info && info.how;
+        var next = how === 'blur' && info.next && boardScroll.contains(info.next) && info.next.dataset && info.next.dataset.field
+          ? placeOf(info.next) : null;
+        var focus = how === 'enter' || how === 'escape' ? { key: key, field: field, index: index, add: adding } : null;
+        function done() {
+          render(focus);
+          if (next) { var n = findPlace(next); if (n) n.focus({ preventScroll: true }); }
+        }
+        if (value === null) { done(); return; }
         value = value.replace(/\s+/g, ' ').trim();
-        if (value === old || (field === 'term' && !value) || (adding && !value)) { render(focus); return; }
+        if (value === old || (field === 'term' && !value) || (adding && !value)) { done(); return; }
         if (isList) {
-          var next = card[field].slice();
-          if (adding) next.push(value); else next[index] = value;
-          state = BS.editList(state, key, field, next);
+          var list = card[field].slice();
+          if (adding) list.push(value); else list[index] = value;
+          state = BS.editList(state, key, field, list);
+          if (!adding && !value) {
+            removedAt = { key: key, field: field, index: index };
+            if (next && next.key === key && next.field === field && next.index != null && next.index > index) next.index -= 1;
+          }
         } else {
           state = BS.editText(state, key, field, value);
         }
-        render(focus);
+        done();
         announce(noun + ' saved');
       }
     });
   }
 
+  // While an editor is open, a press on another board item must not blur the
+  // editor first: that save re-renders the board between mousedown and mouseup
+  // and the click would be lost. The click handler saves, then opens the item.
+  boardScroll.addEventListener('mousedown', function (e) {
+    var node = e.target.closest('[data-field]');
+    if (activeEditor && node && boardScroll.contains(node)) e.preventDefault();
+  });
   boardScroll.addEventListener('click', function (e) {
     var node = e.target.closest('[data-field]');
     if (node && boardScroll.contains(node)) startEdit(node);
@@ -406,8 +453,11 @@
       }
       if (BLOCKING[code]) {
         blocker.hidden = false;
+        // A decline lasts for this page load; only a missing runtime may come back.
+        if (code !== 'no_sample') { claudeBlocked = true; refreshInput(); }
         write("Claude isn't available here, see the note on the board", 'error', true);
-        if (lostFocus) castControl().focus();
+        // cast may now be disabled, so the note itself takes focus.
+        if (lostFocus) blocker.focus();
         return;
       }
       write(FAILURE_TEXT[code] || FAILURE_TEXT.upstream_error, 'error', true, true);

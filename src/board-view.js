@@ -137,7 +137,9 @@
   }
 
   /* Swap `node` for an input. Enter saves, Esc cancels, leaving the field saves.
-     onDone(value | null): null means cancelled. Returns { input, cancel }. */
+     onDone(value | null, info): null means cancelled. info.how is 'enter',
+     'escape', 'blur' or 'commit'; on blur info.next is where focus went.
+     Returns { input, cancel, commit }. */
   function openEditor(node, opts) {
     var input = el(opts.multiline ? 'textarea' : 'input', 'edit-input');
     if (!opts.multiline) input.type = 'text';
@@ -145,21 +147,26 @@
     input.setAttribute('aria-label', opts.label);
     if (opts.placeholder) input.placeholder = opts.placeholder;
     var finished = false;
-    function finish(value) {
+    function finish(value, info) {
       if (finished) return;
       finished = true;
-      opts.onDone(value);
+      opts.onDone(value, info);
     }
     input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); finish(input.value); }
-      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); }
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); finish(input.value, { how: 'enter' }); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null, { how: 'escape' }); }
     });
-    input.addEventListener('blur', function () { finish(input.value); });
+    input.addEventListener('blur', function (e) { finish(input.value, { how: 'blur', next: e.relatedTarget }); });
     node.replaceWith(input);
     input.focus();
     if (input.select) input.select();
-    // cancel(): close silently, without saving and without calling onDone.
-    return { input: input, cancel: function () { finished = true; } };
+    return {
+      input: input,
+      // cancel(): close silently, without saving and without calling onDone.
+      cancel: function () { finished = true; },
+      // commit(): save now, as leaving the field would (the caller moves focus).
+      commit: function () { finish(input.value, { how: 'commit' }); }
+    };
   }
 
   return { renderBoard: renderBoard, renderSkeleton: renderSkeleton, openEditor: openEditor };
