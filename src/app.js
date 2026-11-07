@@ -34,6 +34,7 @@
   var compact = false;
   var busy = false;
   var controller = null;
+  var activeEditor = null;   // { cancel() } of the open inline editor, if any
   var noticeTimer = 0;
 
   /* ── Claude seam. Task 7 replaces the default with the real sample call.
@@ -178,7 +179,9 @@
     expandButton.hidden = !compact;
     collapseButton.setAttribute('aria-expanded', String(!compact));
     expandButton.setAttribute('aria-expanded', String(!compact));
-    View.renderBoard(boardScroll, state, review);
+    // Answer view and an in-flight cast both lock editing (no editable targets).
+    View.renderBoard(boardScroll, state, review || busy);
+    boardPanel.setAttribute('aria-busy', String(busy));
     refreshInput();
     if (focus) refocus(focus);
     fitReview();
@@ -230,18 +233,21 @@
   function startEdit(node) {
     var key = node.dataset.key, field = node.dataset.field;
     var card = cardOf(key);
-    if (!card || review) return;
+    if (!card || review || busy) return;
     var isList = field === 'synonyms' || field === 'antonyms';
     var adding = isList && node.dataset.add === '1';
     var index = isList && !adding ? Number(node.dataset.index) : null;
     var noun = field === 'term' ? 'word' : field === 'definition' ? 'definition' : field.slice(0, -1);
     var old = field === 'term' || field === 'definition' ? card[field] : adding ? '' : card[field][index];
-    View.openEditor(node, {
+    if (activeEditor) { activeEditor.cancel(); activeEditor = null; }
+    activeEditor = View.openEditor(node, {
       value: old,
       multiline: field === 'definition',
       label: (adding ? 'new ' : 'edit ') + noun + ' for ' + card.term + '. Enter saves, Escape cancels',
       placeholder: isList ? (adding ? 'new ' + noun : 'empty removes it') : '',
       onDone: function (value) {
+        activeEditor = null;
+        if (busy) return;   // never save into a board that a cast is about to replace
         var focus = { key: key, field: field, index: index, add: adding };
         if (value === null) { render(focus); return; }
         value = value.replace(/\s+/g, ' ').trim();
@@ -316,30 +322,41 @@
         'cast rebuilds every card from the text and drops the edits you made.', 'replace', true);
       if (!replace) { write('cast cancelled, your edits are kept'); return; }
     }
+    // Each request owns its controller. A result is applied only while it is
+    // still the current request and was not aborted (clean, or a newer cast).
+    var my = new AbortController();
+    controller = my;
     busy = true;
-    controller = new AbortController();
-    refreshInput();
-    answerButton.disabled = true;
+    if (activeEditor) { activeEditor.cancel(); activeEditor = null; }   // editing locks while Claude works
+    render();
     write('asking Claude…', 'note', true);
+    function current() { return controller === my && !my.signal.aborted; }
     try {
-      var cards = await askClaude(terms, controller.signal);
+      var cards = await askClaude(terms, my.signal);
+      if (!current()) return;
       state = BS.setCards(state, cards);
       compact = true;
       busy = false;
+      controller = null;
       render();
       var failed = cards.filter(function (c) { return c.failed; }).length;
       write(failed ? 'done, ' + plural(failed, 'card') + " couldn't be generated" : 'done', failed ? 'error' : 'note');
     } catch (err) {
+      if (!current()) return;
       busy = false;
+      controller = null;
       render();
       if (!(err && (err.name === 'AbortError' || err.code === 'cancelled'))) {
         write("couldn't reach Claude, try again", 'error');
       }
-    } finally {
-      busy = false;
-      controller = null;
-      refreshInput();
     }
+  }
+
+  // Drop the in-flight request (if any) so its result is never applied.
+  function abortCast() {
+    if (controller) controller.abort();
+    controller = null;
+    busy = false;
   }
 
   castButton.addEventListener('click', function () { cast(); });
@@ -355,7 +372,7 @@
   cleanButton.addEventListener('click', async function () {
     var ok = await ask('Clean everything?', 'This clears the pasted text, the exercise name and every card. It cannot be undone.', 'clean', true);
     if (!ok) return;
-    if (controller) controller.abort();
+    abortCast();
     paste.replaceChildren();
     titleInput.value = '';
     state = BS.setMode(BS.createState(), state.mode);

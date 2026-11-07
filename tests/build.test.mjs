@@ -28,6 +28,12 @@ test('build writes one self-contained dist/word-board.html', () => {
   assert.ok(html.includes('cast'), 'cast button missing');
 });
 
+test('dev-only Claude stub never reaches dist', () => {
+  const html = readFileSync(out, 'utf8');
+  assert.ok(!html.includes('stub-claude'), 'stub-claude referenced in dist');
+  assert.ok(!html.includes('__stubCalls'), 'stub code inlined into dist');
+});
+
 test('inlined scripts cannot close their own <script> element early', () => {
   const html = readFileSync(out, 'utf8');
   const opens = (html.match(/<script\b/gi) || []).length;

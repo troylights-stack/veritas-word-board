@@ -116,7 +116,7 @@
   }
 
   /* Swap `node` for an input. Enter saves, Esc cancels, leaving the field saves.
-     onDone(value | null): null means cancelled. */
+     onDone(value | null): null means cancelled. Returns { input, cancel }. */
   function openEditor(node, opts) {
     var input = el(opts.multiline ? 'textarea' : 'input', 'edit-input');
     if (!opts.multiline) input.type = 'text';
@@ -137,7 +137,8 @@
     node.replaceWith(input);
     input.focus();
     if (input.select) input.select();
-    return input;
+    // cancel(): close silently, without saving and without calling onDone.
+    return { input: input, cancel: function () { finished = true; } };
   }
 
   return { renderBoard: renderBoard, openEditor: openEditor };
