@@ -66,3 +66,11 @@ test('ignores Word style blocks, comments and head', () => {
   assert.equal(r[0].context, 'Brave deed.');
   assert.ok(!/junk|font-weight|T\b/.test(r[0].context));
 });
+
+test('does not merge bold runs across paragraph, br or li boundaries', () => {
+  assert.deepEqual(texts('<p><b>alpha</b></p><p><b>beta</b></p>'), ['Alpha', 'Beta']);
+  assert.deepEqual(texts('<b>alpha</b><br><b>beta</b>'), ['Alpha', 'Beta']);
+  assert.deepEqual(texts('<li><b>a</b></li><li><b>b</b></li>'), ['A', 'B']);
+  assert.deepEqual(texts('<b>one<br>two</b>'), ['One', 'Two']);
+  assert.deepEqual(texts('<b>Uncanny</b> <b>knack</b>'), ['Uncanny knack']);
+});

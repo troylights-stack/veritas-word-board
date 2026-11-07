@@ -101,7 +101,7 @@
     runs.forEach(function (r) {
       if (r.b) {
         var last = ranges[ranges.length - 1];
-        if (last && /^\s*$/.test(text.slice(last.end))) last.end = text.length + r.t.length;
+        if (last && /^[^\S\n]*$/.test(text.slice(last.end))) last.end = text.length + r.t.length;
         else ranges.push({ start: text.length, end: text.length + r.t.length });
       }
       text += r.t;
