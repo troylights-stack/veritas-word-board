@@ -81,7 +81,7 @@
     var start = 0, re = /[.!?]+(?=\s|$)|\n/g, m;
     while ((m = re.exec(text))) {
       var endIdx = m.index + m[0].length;
-      if (pos < endIdx || (pos === m.index && m[0] !== '\n' && false)) {
+      if (pos < endIdx) {
         return text.slice(start, m[0] === '\n' ? m.index : endIdx);
       }
       start = endIdx;
