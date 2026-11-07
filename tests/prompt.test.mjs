@@ -79,3 +79,15 @@ test('HTML in values is kept as literal text', () => {
   assert.equal(c.definition, '<b>quick</b> &amp; <script>x</script>');
   assert.deepEqual(c.synonyms, ['<i>fast</i>']);
 });
+
+test('matching ignores curly vs straight quotes, dashes and inner spaces', () => {
+  const curly = { key: 'don’t — stop', text: 'Don’t — stop', context: '' };
+  const [a] = P.normalizeResponse([{ term: "don't  -  stop", definition: 'x' }], [curly]);
+  assert.equal(a.failed, false);
+  assert.equal(a.key, 'don’t — stop');
+  assert.equal(a.term, 'Don’t — stop');
+  const straight = { key: '"quoted" self-made', text: '"Quoted" self-made', context: '' };
+  const [b] = P.normalizeResponse([{ term: '“Quoted” self–made', definition: 'y' }], [straight]);
+  assert.equal(b.failed, false);
+  assert.equal(b.key, '"quoted" self-made');
+});

@@ -43,20 +43,34 @@
     return out;
   }
 
+  // Match key: Word's curly quotes and dashes may come back straight (or the
+  // other way round), so fold them before comparing.
+  function matchKey(s) {
+    return String(s)
+      .replace(/[\u2018\u2019\u201a\u201b\u2032]/g, "'")
+      .replace(/[\u201c\u201d\u201e\u201f\u2033]/g, '"')
+      .replace(/[\u2010-\u2015\u2212]/g, '-')
+      .replace(/\s*-\s*/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
   function normalizeResponse(raw, terms) {
     var byKey = {};
     if (Array.isArray(raw)) {
       for (var i = 0; i < raw.length; i++) {
         var it = raw[i];
         if (!isObj(it) || typeof it.term !== 'string') continue;
-        var k = it.term.trim().toLowerCase();
+        var k = matchKey(it.term);
         if (!Object.prototype.hasOwnProperty.call(byKey, k)) byKey[k] = it;
       }
     }
     var cards = [];
     for (var j = 0; j < terms.length; j++) {
       var t = terms[j];
-      var m = Object.prototype.hasOwnProperty.call(byKey, t.key) ? byKey[t.key] : null;
+      var tk = matchKey(t.key);
+      var m = Object.prototype.hasOwnProperty.call(byKey, tk) ? byKey[tk] : null;
       var def = m && typeof m.definition === 'string' ? m.definition.trim() : '';
       cards.push({
         key: t.key,
