@@ -65,7 +65,7 @@
     var rows = [];
     cards.forEach(function (c) {
       var blocks = [];
-      if (c.failed) {
+      if (c.failed && !c.definition) {
         blocks.push({ kind: 'definition', lines: ["couldn't generate, retry"] });
       } else {
         blocks.push({ kind: 'definition', lines: wrapText(c.definition || '', cardInner, widthOf) });

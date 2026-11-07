@@ -53,3 +53,21 @@ test('needsCastConfirm', () => {
   assert.equal(S.needsCastConfirm(loaded()), false);
   assert.equal(S.needsCastConfirm(S.editText(loaded(), 1, 'term', 'Z')), true);
 });
+
+const failedCard = (key) => ({ key, term: 'Term' + key, definition: '', synonyms: [], antonyms: [], failed: true });
+test('typing a definition into a failed card clears failed', () => {
+  const s = deepFreeze(S.setCards(S.createState(), [failedCard(1)]));
+  const n = S.editText(s, 1, 'definition', 'my own meaning');
+  assert.equal(n.cards[0].failed, false);
+  assert.equal(n.cards[0].definition, 'my own meaning');
+  assert.equal(s.cards[0].failed, true);
+});
+test('editing the term or emptying the definition does not clear failed', () => {
+  const s = deepFreeze(S.setCards(S.createState(), [failedCard(1)]));
+  assert.equal(S.editText(s, 1, 'term', 'New').cards[0].failed, true);
+  assert.equal(S.editText(s, 1, 'definition', '').cards[0].failed, true);
+  assert.equal(S.editText(s, 1, 'definition', '   ').cards[0].failed, true);
+});
+test('emptying the definition of a good card leaves failed false', () => {
+  assert.equal(S.editText(loaded(), 1, 'definition', '').cards[0].failed, false);
+});

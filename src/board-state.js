@@ -30,7 +30,11 @@
   function setCards(s, cards) { return assign(s, { cards: cards.slice(), dirty: false }); }
   function editText(s, key, field, value) {
     if (field !== 'term' && field !== 'definition') return s;
-    return assign(s, { cards: mapCard(s, key, function (c) { c[field] = value; }), dirty: true });
+    return assign(s, { cards: mapCard(s, key, function (c) {
+      c[field] = value;
+      // A definition typed into a failed card repairs it.
+      if (field === 'definition' && String(value).trim()) c.failed = false;
+    }), dirty: true });
   }
   function editList(s, key, field, list) {
     if (field !== 'synonyms' && field !== 'antonyms') return s;

@@ -120,3 +120,9 @@ test('empty synonym or antonym list reads "none", like the screen', () => {
   assert.equal(b[1].lines[0], 'Synonyms: none');
   assert.equal(b[2].lines[0], 'Antonyms: none');
 });
+
+test('a repaired failed card (failed but with a definition) lays out its content', () => {
+  const b = layoutBoard([card(1, { failed: true, definition: 'typed by the student' })], 'all', 't', w).rows[0].card.blocks;
+  assert.deepEqual(b.map((x) => x.kind), ['definition', 'synonyms', 'antonyms']);
+  assert.deepEqual(b[0].lines, ['typed by the student']);
+});
